@@ -1,0 +1,12 @@
+# Secrets / sensitive files
+*.secret.yaml
+secrets/
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+
+# Temporary / build artifacts
+*~
+*.tmp
