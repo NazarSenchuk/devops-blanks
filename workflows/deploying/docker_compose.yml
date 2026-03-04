@@ -1,0 +1,84 @@
+name: Deploying Docker Compose
+
+on:
+  workflow_call:
+    secrets:
+      SSH_KEY:
+        required: true
+      HOSTS:
+        required: true
+    inputs:
+      copy:
+        required: false
+        type: boolean
+      copying_file:
+        required: false
+        type: string
+      image:  
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+      port:
+        required: true
+        type: string
+      registry:
+        required: true
+        type: string
+      region:
+        required: true
+        type: string
+      runs-on:
+        required: false
+        type: string
+    
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  define-matrix:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    outputs:
+      hosts: ${{ steps.set-matrix.outputs.hosts }}
+    steps:
+      - name: Set deployment matrix
+        id: set-matrix
+        run: |
+          HOSTS=${secrets.HOSTS}
+          MATRIX=$(echo "$HOSTS"| jq -R -s -c 'split("\n")[:-1]') | map (select(length > 0))
+          echo "hosts=$MATRIX" >> $GITHUB_OUTPUT
+  
+  build-and-push:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    matrix:
+          host: ${{ fromJson(needs.define-matrix.outputs.hosts ) }}
+    steps:
+      - name: Checkout repository
+        if: ${{ inputs.copy }}
+        uses: actions/checkout@v4
+        
+      - name: Copying file to servers
+        if: ${{ inputs.copy }}
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ matrix.host }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          source: ${{ inputs.copying_file }}
+          target: /home/ubuntu/
+
+
+      - name: Deployment to servers
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ matrix.host }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ${{ inputs.region }} | docker login --username AWS --password-stdin ${{ inputs.registry }}
+            docker compose pull 
+            docker compose up -d
+            docker image prune -f

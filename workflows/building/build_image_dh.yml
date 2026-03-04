@@ -1,0 +1,69 @@
+name: Build Image DH
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+        type: string
+      DOCKERHUB_TOKEN:
+        required: true
+        type: string
+    inputs:
+      runs-on:
+        required: false
+        default: ubuntu
+      context:
+        required: false
+        default: ./
+      service:
+        required: true
+        type: string
+
+    outputs:
+      image:
+        description: Built image tag
+        value: ${{ jobs.build.outputs.image }}
+
+permissions:
+  id-token: write
+  contents:
+
+run-name: Building image  branch: ${{ github.ref_name }}  service: ${{ inputs.service }}
+
+
+jobs:
+  build:
+    runs-on: ${{ steps.tag.inputs.runs-on }}
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      -  name: Login to Docker Hub
+         uses: docker/login-action@v3
+         with:
+           username: ${{ secrets.DOCKERHUB_USERNAME }}
+           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image tag
+        id: tag
+        run: |
+              echo registry.hub.docker.com/library/${{ inputs.service }}:${{ steps.tag.outputs.image }}" >> $GITHUB_OUTPUT
+              echo "BUILDING IMAGE: registry.hub.docker.com/library/${{ inputs.service }}:${{ steps.tag.outputs.image }}"
+
+      - name: Build image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ inputs.service }}
+          push: true
+          tags: ${{ inputs.registry }}/${{ inputs.service }}:${{ steps.tag.outputs.image_tag }}
+
+
+      - name: Finishing build
+        id: build
+        run: |
+             echo "======= CONGRATULATIONS ==========\n"
+             echo "======= IMAGE BUILDED  =========="

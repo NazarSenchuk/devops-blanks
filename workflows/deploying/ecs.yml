@@ -1,0 +1,64 @@
+name: Deploy to ECS
+
+on:
+  workflow_call:
+    inputs:
+      oidc_role:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+      cluster:
+        required: true
+        type: string
+      runs-on:
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+run-name: Deploy to ${{ github.ref_name }} service: ${{ inputs.service }}
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.oidc_role }}
+          aws-region: ${{ inputs.region }}
+
+
+      - name: Download existing task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ task }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Update Amazon ECS task definition
+        id: render-container
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ inputs.service }}
+          image: ${{ inputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-container.outputs.task-definition }}
+          service: ${{ inputs.service }}
+          cluster: ${{ inputs.cluster }}
+          wait-for-service-stability: true

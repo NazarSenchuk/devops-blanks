@@ -1,0 +1,69 @@
+name: Deploying Docker
+
+'on':
+  workflow_call:
+    secrets:
+      SSH_KEY:
+        required: true
+      HOSTS:
+        required: true
+      DOCKER_ENV_VARS:
+        required: true
+    inputs:
+      image:
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+      port:
+        required: true
+        type: string
+      registry:
+        required: true
+        type: string
+      region:
+        required: true
+        type: string
+      runs-on:
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  define-matrix:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    outputs:
+      hosts: ${{ steps.set-matrix.outputs.hosts }}
+    steps:
+      - name: Set deployment matrix
+        id: set-matrix
+        run: |
+          HOSTS=${secrets.HOSTS}
+          MATRIX=$(echo "$HOSTS"| jq -R -s -c 'split("\n")[:-1]') | map (select(length > 0))
+          echo "hosts=$MATRIX" >> $GITHUB_OUTPUT
+
+  build-and-push:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    matrix:
+      host: ${{ fromJson(needs.define-matrix.outputs.hosts ) }}
+    steps:
+
+      - name: Deployment to servers
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE: ${{ inputs.image }}
+        with:
+          host: ${{ matrix.host }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ${{ inputs.region }} | docker login --username AWS --password-stdin ${{ inputs.registry }}
+            docker pull  ${{ inputs.image }}
+            docker stop ${{ inputs.service }} || true
+            docker rm ${{ inputs.service }} || true
+            docker run -d -p ${{ inputs.port }} --name ${{ inputs.service }} -e "${{ secrets.DOCKER_ENV_VARS }}"  ${{ inputs.image }}
+            docker image prune -f

@@ -1,0 +1,80 @@
+name: Promote to Stage
+
+on:
+  workflow_call:
+    runs-on:
+        required: false
+        type: string
+    current_environment:
+        required: true
+        type:
+    promoting_environment:
+        required: true
+        type: string
+    oidc_role:
+        required: true
+        type: string
+    aws_region:
+      required: true
+      type: string
+    service:
+      required: true
+      type: string
+    promoting_cluster:
+        required: true
+        type: string
+    runs-on:
+      required: false
+      type: string
+
+
+
+    secrets:
+      PAT_TOKEN:
+        required: true
+
+jobs:
+  promote:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    environment:  ${{ inputs.promoting_environment }}
+
+    steps:
+     - name: Configure AWS credentials
+       uses: aws-actions/configure-aws-credentials@v4
+       with:
+          role-to-assume: ${{ inputs.oidc_role }}
+          aws-region: ${{ inputs.region }}
+
+
+     - name: Download existing task definition
+       run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ inputs.service }} \
+            --query taskDefinition > task-definition.json
+
+
+     - name: Deploy Amazon ECS task definition
+       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+       with:
+          task-definition: ${{ steps.render-container.outputs.task-definition }}
+          service: ${{ inputs.service }}
+          cluster: ${{ inputs.promoting_cluster }}
+          wait-for-service-stability: true
+
+
+     - name: Create deployment PR comment
+       if: github.event_name == 'pull_request'
+       uses: actions/github-script@v6
+       with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **Promoted to  ${{ inputs.promoting_environment }} Environment**
+
+              The latest  ${{ inputs.current_environment }} image has been promoted to the  ${{ inputs.promoting_environment }} environment.
+              ECS  will now deploy this to your  ${{ inputs.promoting_environment }} environment.
+
+              **Image:** ${{ steps.get-dev-tag.outputs.image }}`
+            });

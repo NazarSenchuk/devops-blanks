@@ -1,0 +1,68 @@
+name: Deploy Kustomize
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        required: true
+        type: string
+      service:
+        required: true
+        type: string
+      runs-on:
+        required: false
+        type: string
+      environment:
+        required: true
+        type: string
+      repository:
+        required: true
+        type: string
+      context:
+        required: true
+        type: string
+    secrets:
+      PAT_TOKEN:
+        required: true
+
+run-name: Deploy to ${{ inputs.environment }} service: ${{ inputs.service }}
+
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          token: ${{ secrets.PAT_TOKEN }}
+          path: infra-repo
+          ref: main
+
+      - name: Update image tag
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          cd infra-repo/${{ inputs.context }}
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          ./kustomize edit set image $IMAGE
+
+          echo "Updated ${{ inputs.service }} environment: ${{ inputs.environment }} to image: $IMAGE"
+          echo "kustomize file:"
+          cat kustomization.yaml
+
+      - name: Commit update
+        run: |
+          cd infra-repo
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add ${{ inputs.context }}/kustomization.yaml
+          git commit -m "Deploy to ${{ inputs.environment }}: ${GITHUB_SHA::7}" || echo "No changes to commit"
+          git push origin main
+
+      - name: Finishing Deploy
+        run: |
+          echo "======= CONGRATULATIONS =========="
+          echo "======= Deployment Finished ======"

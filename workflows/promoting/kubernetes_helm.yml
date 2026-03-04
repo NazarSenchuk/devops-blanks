@@ -1,0 +1,88 @@
+name: Promote to Stage
+
+on:
+  workflow_call:
+    runs-on:
+        required: false
+        type: string
+    current_environment:
+        required: true
+        type:
+    promoting_environment:
+        required: true
+        type: string
+    repository:
+        required: true
+        type: string
+    current_values:
+        required: true
+        type: string
+    promoting_values:
+        required: true
+        type: string
+
+
+
+    secrets:
+      PAT_TOKEN:
+        required: true
+
+jobs:
+  promote:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    environment:  ${{ inputs.promoting_environment }}
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v4
+        with:
+            repository:  ${{ inputs.repository }}
+            token: ${{ secrets.PAT_TOKEN }}
+            path: infra-repo
+            ref: main
+
+      - name: Get latest ${{ inputs.current_environment }} image tag
+        id: get-dev-tag
+        run: |
+          cd infra-repo
+          IMAGE=$(grep 'image:' ${{ inputs.current_values }} | head -n1 | awk '{print $2}')
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+
+      - name: Update  ${{ inputs.promoting_environment }} with  ${{ inputs.current_environment }} image
+        env:
+          IMAGE: ${{ steps.get-dev-tag.outputs.image }}
+        run: |
+          cd infra-repo
+          yq eval '.image = "$IMAGE"' -i ${{ inputs.values }}
+          echo "Updated ${{ inputs.promoting_environment }}  to use ${{ inputs.current_environment }} image: $IMAGE"
+          cat values.yaml
+          echo "values file:"
+          cat ${{ inputs.values }}
+
+
+      - name: Commit stage update
+        run: |
+          cd infra-repo
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add ${{ inputs.promoting_values }}
+          git commit -m "Promote to ${{ inputs.promoting_environment }}: ${{ github.sha_short }}"
+          git push origin main
+
+      - name: Create deployment PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **Promoted to  ${{ inputs.promoting_environment }} Environment**
+
+              The latest  ${{ inputs.current_environment }} image has been promoted to the  ${{ inputs.promoting_environment }} environment.
+              ArgoCD will now deploy this to your  ${{ inputs.promoting_environment }}  environment.
+
+              **Image:** ${{ steps.get-dev-tag.outputs.image }}`
+            });
