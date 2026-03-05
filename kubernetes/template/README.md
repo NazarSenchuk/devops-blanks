@@ -2,7 +2,7 @@
 
 This repository follows a scalable Kustomize structure for managing multiple applications across environments.
 
-- `bases/`: Per‑application base manifests
+- `bases/`: Perapplication base manifests
 - `overlays/`: Environment-specific overlays (dev, test, prod)
 - `cluster/`: Cluster-wide resources (namespaces, CRDs, storage classes)
 - `charts/`: Helm charts (if used)

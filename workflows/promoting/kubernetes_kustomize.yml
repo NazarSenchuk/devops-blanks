@@ -7,7 +7,7 @@ on:
         type: string
     current_environment:
         required: true
-        type:
+        type: string
     promoting_environment:
         required: true
         type: string
@@ -47,7 +47,7 @@ jobs:
           cd infra-repo
           IMAGE_NAME=$(grep 'name:' ${{ inputs.current_context }}/kustomization.yaml | head -n1 | awk '{print $2}')
           IMAGE_TAG=$(grep 'newTag:' ${{ inputs.current_context }}/kustomization.yaml | head -n1 | awk '{print $2}')
-          echo "image=$IMAGE_NAME:IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE_NAME:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
 
       - name: Update  ${{ inputs.promoting_environment }} with  ${{ inputs.current_environment }} image
@@ -69,7 +69,7 @@ jobs:
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add ${{ inputs.promoting_context }}/kustomization.yaml
-          git commit -m "Promote to ${{ inputs.promoting_environment }}: ${{ github.sha_short }}"
+          git commit -m "Promote to ${{ inputs.promoting_environment }}: ${GITHUB_SHA::7}"
           git push origin main
 
       - name: Create deployment PR comment
@@ -81,7 +81,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `✅ **Promoted to  ${{ inputs.promoting_environment }} Environment**
+              body: ` **Promoted to  ${{ inputs.promoting_environment }} Environment**
 
               The latest  ${{ inputs.current_environment }} image has been promoted to the  ${{ inputs.promoting_environment }} environment.
               ArgoCD will now deploy this to your  ${{ inputs.promoting_environment }} environment.

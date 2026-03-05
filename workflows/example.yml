@@ -1,0 +1,42 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/building/build_image_dh.yml
+    with:
+      service: my-backend-service
+      context: .
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy-staging:
+    needs: build
+    uses: ./.github/workflows/deploying/kubernetes_kustomize.yml
+    with:
+      image: ${{ needs.build.outputs.image }}
+      service: my-backend-service
+      environment: staging
+      repository: NazarSenchuk/devops-blanks
+      context: kubernetes/overlays/staging
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  promote-to-production:
+    needs: deploy-staging
+    uses: ./.github/workflows/promoting/kubernetes_kustomize.yml
+    with:
+      current_environment: staging
+      promoting_environment: production
+      repository: NazarSenchuk/devops-blanks
+      current_context: kubernetes/overlays/staging
+      promoting_context: kubernetes/overlays/production
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
